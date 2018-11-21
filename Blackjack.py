@@ -44,13 +44,15 @@ class Player:
     
 class Blackjack:
     
-    def __init__(self,dealer_stand=17):
+    def __init__(self,dealer_stand=17,betting=False,decks=1,shuffle=True):
         self.dealer_stand = dealer_stand
         self.player = Player()
-    
-    def new_game(self,decks=1,shuffle=True):
+        self.betting = betting
         self.deck = Deck().deck*decks
-        if shuffle == True:
+        self.shuffle = shuffle
+    
+    def new_game(self):
+        if self.shuffle == True:
             self.shuffle()
         self.player_hand = []
         self.dealer_hand = []
@@ -139,6 +141,10 @@ class Blackjack:
         
     def play(self):
         self.new_game()
+        if self.betting == True:
+            stake = input('How much would you like to bet? ')
+            stake = int(stake)
+            self.player.bank += -stake
         self.deal()
         if self.check_winner(on_deal=True) == False:
             print('Dealer Hand')
@@ -146,6 +152,8 @@ class Blackjack:
             print('Player Loses')
         elif self.check_winner() == 'Blackjack':
             print('BLACKJACK! Player wins')
+            if self.betting == True:
+                self.player.bank += stake*2.5
         elif self.check_winner() == 'Push':
             print('Push')
         else:
@@ -161,6 +169,12 @@ class Blackjack:
                     print('Player Loses')
                 elif winner == True:
                     print('Player wins')
-                else: print('Push')
-        
+                    if self.betting == True:
+                        self.player.bank += stake*2 
+                else: 
+                    print('Push')
+                    if self.betting == True:
+                        self.player.bank += stake
+        if self.betting == True:
+            print(self.player.bank)
             
