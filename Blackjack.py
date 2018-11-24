@@ -44,6 +44,7 @@ class Player:
         else: self.name = name
         self.bank=bank
         self.hand = []
+        self.stake = 0
         
     def rand_name(self):
         return 'Guest' + ''.join([str(random.randint(0,9)) for x in range(8)])
@@ -56,14 +57,24 @@ class Dealer(Player):
     
 class Blackjack:
     
-    def __init__(self,dealer_stand=17,betting=False,decks=1,shuffle=True,cut=True):
+    def __init__(self,dealer_stand=17,betting=False,decks=1,shuffle=True,cut=True,seats=6):
         self.dealer_stand = dealer_stand
-        self.player = Player()
         self.dealer = Dealer()
+        self.players = []
         self.betting = betting
         self.cut = cut
         self.decks = decks
         self.shuffle = shuffle
+        self.seats = seats
+        
+    def add_player(self,name=None,bank=None):
+        if len(self.players) >= self.seats:
+            print('Sorry! Table is Full')
+        else:
+            if bank == None:
+                self.players.append(Player(name=name))
+            else:
+                self.players.append(Player(name,bank))
         
     def create_deck(self):
         return Deck(self.cut).deck*self.decks
@@ -74,7 +85,8 @@ class Blackjack:
             self.shuffled()
             if self.cut == True:
                 self.shuffle = False
-        self.player.hand = []
+        for player in self.players:
+            player.hand = []
         self.dealer.hand = []
         
     def shuffled(self):
@@ -101,28 +113,37 @@ class Blackjack:
         return card
 
     def deal(self):
-        self.player.hand.append(self.draw_card())
-        self.dealer.hand.append(self.draw_card())
-        self.player.hand.append(self.draw_card())
-        self.dealer.hand.append(self.draw_card())
-        print(self.player.name + ' hand:')
-        self.print_cards(self.player.hand)
+        for x in (1,2):
+            for player in self.players:
+                player.hand.append(self.draw_card())
+                if len(player.hand) == 2:
+                    print(player.name + ' hand:')
+                    self.print_cards(player.hand)
+            self.dealer.hand.append(self.draw_card())
         print('Dealer hand:')
         self.print_dealer()
-
+        
+    def get_card(self,player):
+        card = self.draw_card()
+        player.hand.append(card)
+        self.print_cards([card])
+        
     def player_turn(self,player):
         action = 'none'
-        print(player + ' Total: ' + str(self.calc_hand(self.player.hand)))
-        while self.check_bust(self.player.hand) != True and action.upper() not in ['S']:
-            action = input('Hit or Stand? Enter H or S: ')
+        draws = 0
+        print(player.name + ' Total: ' + str(self.calc_hand(player.hand)))
+        while self.check_bust(player.hand) != True and action.upper() not in ['S','D']:
+            action = self.get_inst(player,draws)
             if action.upper() == 'H':
-                card = self.draw_card()
-                self.player.hand.append(card)
-                self.print_cards([card])
-                print(player + ' Total: ' + str(self.calc_hand(self.player.hand)))
-            elif action.upper() != 'S':
-                print('ERROR! You must enter H or S!')
-        if self.check_bust(self.player.hand) == True:
+                self.get_card(player)
+                draws += 1
+            elif action.upper() == 'D':
+                player.bank -= player.stake
+                player.stake = player.stake * 2
+                self.get_card(player)
+                draws += 1
+            print(player.name + ' Total: ' + str(self.calc_hand(player.hand)))
+        if self.check_bust(player.hand) == True:
             print('Bust!')
             
     def calc_hand(self,hand):
@@ -136,73 +157,103 @@ class Blackjack:
         if self.calc_hand(hand) > 21:
             return True
     
+    def get_inst(self,player,draws):
+        if draws == 0:
+            if player.hand[0].value == player.hand[1].value:
+                value = input('Hit(H), Stand(S), Double(D) or Split(P)?: ')
+                if value.upper() not in ['H','S','D','P']:
+                    print('ERROR! You must enter H, S, D or P!')
+                    value = self.get_inst(player,draws)
+            else:
+                value = input('Hit(H), Stand(S) or Double(D)?: ')
+                if value.upper() not in ['H','S','D']:
+                    print('ERROR! You must enter H, S or D!')
+                    value = self.get_inst(player,draws)
+        else:
+            value = input('Hit(H) or Stand(S)?: ')
+            if value.upper() not in  ['H','S']:
+                print('ERROR! You must enter H or S!')
+                value = self.get_inst(player,draws)
+        return value
+            
+        
     def dealer_turn(self):
         self.print_cards(self.dealer.hand)
         print('Dealer Total: ' + str(self.calc_hand(self.dealer.hand)))
         while self.calc_hand(self.dealer.hand) < self.dealer_stand:
-            card = self.draw_card()
-            self.dealer.hand.append(card)
-            self.print_cards([card])
+            self.get_card(self.dealer)
             print('Dealer Total: ' + str(self.calc_hand(self.dealer.hand)))
         if self.check_bust(self.dealer.hand) == True:
             print('Dealer Bust!')
         
-    def check_winner(self,on_deal=False,on_player=False,on_dealer=False):
+    def check_winner(self,player,on_deal=False,on_player=False,on_dealer=False):
         if on_deal == True:
-            if len(self.player.hand) == 2 and  self.calc_hand(self.player.hand) == 21 and len(self.dealer.hand) == 2 and  self.calc_hand(self.dealer.hand) != 21:
+            if len(player.hand) == 2 and  self.calc_hand(player.hand) == 21 and len(self.dealer.hand) == 2 and  self.calc_hand(self.dealer.hand) != 21:
                 return 'Blackjack'
-            elif len(self.player.hand) == 2 and  self.calc_hand(self.player.hand) == 21 and len(self.dealer.hand) == 2 and  self.calc_hand(self.dealer.hand) == 21:
+            elif len(player.hand) == 2 and  self.calc_hand(player.hand) == 21 and len(self.dealer.hand) == 2 and  self.calc_hand(self.dealer.hand) == 21:
                 return 'Push'
             elif self.calc_hand(self.dealer.hand) == 21:
                 return False
         elif on_player == True:
-            if self.calc_hand(self.player.hand) > 21:
+            if self.calc_hand(player.hand) > 21:
                 return False
         elif on_dealer == True:
             if self.calc_hand(self.dealer.hand) > 21:
                 return True
-            elif self.calc_hand(self.player.hand) > self.calc_hand(self.dealer.hand):
+            elif self.calc_hand(player.hand) > self.calc_hand(self.dealer.hand):
                 return True
-            elif self.calc_hand(self.player.hand) == self.calc_hand(self.dealer.hand):
+            elif self.calc_hand(player.hand) == self.calc_hand(self.dealer.hand):
                 return 'Push'
             else: return False
+            
+    def get_stake(self):
+        stake = input('How much would you like to bet? ')
+        return int(stake)
         
     def play(self):
         self.new_game()
         if self.betting == True:
-            stake = input('How much would you like to bet? ')
-            stake = int(stake)
-            self.player.bank += -stake
+            for player in self.players:
+                player.stake = self.get_stake()
+                player.bank += -player.stake
         self.deal()
-        if self.check_winner(on_deal=True) == False:
-            print('Dealer Hand')
-            self.print_cards(self.dealer.hand)
-            print('Player Loses')
-        elif self.check_winner() == 'Blackjack':
-            print('BLACKJACK! Player wins')
-            if self.betting == True:
-                self.player.bank += stake*2.5
-        elif self.check_winner() == 'Push':
-            print('Push')
-        else:
-            self.player_turn(self.player.name)
-            if self.check_winner(on_player=True) == False:
+        for player in self.players:
+            if self.check_winner(player,on_deal=True) == False:
                 print('Dealer Hand')
                 self.print_cards(self.dealer.hand)
-                print('Player Loses')
+                print(player.name + ' Loses')
+            elif self.check_winner(player,on_deal=True) == 'Blackjack':
+                print('BLACKJACK! ' + player.name + ' wins')
+                if self.betting == True:
+                    player.bank += player.stake*2.5
+            elif self.check_winner(player,on_deal=True) == 'Push':
+                print('Push')
+            else:
+                self.player_turn(player)
+                if self.check_winner(player,on_player=True) == False:
+                    print('Dealer Hand')
+                    self.print_cards(self.dealer.hand)
+                    print(player.name + ' Loses')
+        self.dealer_turn()
+        for player in self.players:
+            winner = self.check_winner(player,on_dealer=True)
+            if winner == False:
+                print(player.name + ' Loses')
+            elif winner == True:
+                print(player.name + ' wins')
+                if self.betting == True:
+                    player.bank += player.stake*2 
             else: 
-                self.dealer_turn()
-                winner = self.check_winner(on_dealer=True)
-                if winner == False:
-                    print('Player Loses')
-                elif winner == True:
-                    print('Player wins')
-                    if self.betting == True:
-                        self.player.bank += stake*2 
-                else: 
-                    print('Push')
-                    if self.betting == True:
-                        self.player.bank += stake
-        if self.betting == True:
-            print(self.player.bank)
-            
+                print('Push')
+                if self.betting == True:
+                    player.bank += player.stake
+            if self.betting == True:
+                print(player.name, player.bank)
+
+b = Blackjack(betting=True)
+"""b.add_player('Rob',5000)
+play_on = True
+while play_on == True:
+    b.play()
+    play_on = input('Would you like to play another hand? (Y/N): ')
+    play_on = (True if play_on.upper() == 'Y' else False)"""
