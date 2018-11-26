@@ -6,6 +6,7 @@ Created on Wed Nov 21 09:20:56 2018
 """
 
 import random
+import time
 
 class Card(object):
     
@@ -23,10 +24,10 @@ class Card(object):
         elif value == 13:
             return 'K'
         else: return value
-        
+               
 class Deck(object):
     
-    suits = ['Club','Heart','Diamond','Spade']
+    suits = ['Club','Spade','Heart','Diamond']
     
     def __init__(self,cut=True):
         self.deck = [Card(value, suit) for value in range(1, 14) for suit in self.suits]
@@ -54,10 +55,46 @@ class Dealer(Player):
     def __init__(self):
         self.name = 'Dealer'
         self.bank = float('inf')
+        
+class Ghost(Player):
+    
+    def __init__(self,player):
+        self.name = player.name + '_split'            
+        self.bank = -player.stake
+        self.hand = []
+        self.stake = player.stake
+        self.orig = player
+        while type(self.orig) == Ghost:
+            player = player.orig
+            self.orig = player
     
 class Blackjack:
     
-    def __init__(self,dealer_stand=17,betting=False,decks=1,shuffle=True,cut=True,seats=6):
+    CARD = """\
+    ┌─────────┐
+    │{}       │
+    │         │
+    │         │
+    │    {}   │
+    │         │
+    │         │
+    │       {}│
+    └─────────┘
+    """.format('{rank: <2}', '{suit: <2}', '{rank: >2}')
+    
+    HIDDEN_CARD = """\
+    ┌─────────┐
+    │░░░░░░░░░│
+    │░░░░░░░░░│
+    │░░░░░░░░░│
+    │░░░░░░░░░│
+    │░░░░░░░░░│
+    │░░░░░░░░░│
+    │░░░░░░░░░│
+    └─────────┘
+    """
+    
+    def __init__(self,dealer_stand=17,betting=False,decks=6,shuffle=True,cut=True,seats=6):
         self.dealer_stand = dealer_stand
         self.dealer = Dealer()
         self.players = []
@@ -72,12 +109,38 @@ class Blackjack:
             print('Sorry! Table is Full')
         else:
             if bank == None:
-                self.players.append(Player(name=name))
+                self.players.append(Player(name=(None if name == '' else name)))
             else:
                 self.players.append(Player(name,bank))
         
     def create_deck(self):
         return Deck(self.cut).deck*self.decks
+    
+    def join_lines(self,strings):
+
+        liness = [string.splitlines() for string in strings]
+        return '\n'.join(''.join(lines) for lines in zip(*liness))
+    
+    def ascii_version_of_card(self,*cards):
+
+        name_to_symbol = {
+            'Spade':   '♠',
+            'Diamond': '♦',
+            'Heart':   '♥',
+            'Club':    '♣',
+        }
+    
+        def card_to_string(card):
+            rank = card.value
+    
+            return self.CARD.format(rank=rank, suit=name_to_symbol[card.suit])
+    
+    
+        return self.join_lines(map(card_to_string, cards))
+    
+    def ascii_version_of_hidden_card(self,*cards):
+
+        return self.join_lines((self.HIDDEN_CARD, self.ascii_version_of_card(*cards[1:])))
     
     def new_game(self):
         if self.shuffle == True:
@@ -97,11 +160,10 @@ class Blackjack:
                 self.shuffled()
         
     def print_cards(self,cards):
-        for card in cards:
-            print(card.value,card.suit)
+        print(self.ascii_version_of_card(*cards))
             
     def print_dealer(self):
-        print(self.dealer.hand[0].value,self.dealer.hand[0].suit)
+        print(self.ascii_version_of_hidden_card(*self.dealer.hand))
             
     def draw_card(self):
         card = self.deck[0]
@@ -117,7 +179,7 @@ class Blackjack:
             for player in self.players:
                 player.hand.append(self.draw_card())
                 if len(player.hand) == 2:
-                    print(player.name + ' hand:')
+                    print(player.name + ' Hand:')
                     self.print_cards(player.hand)
             self.dealer.hand.append(self.draw_card())
         print('Dealer hand:')
@@ -126,25 +188,41 @@ class Blackjack:
     def get_card(self,player):
         card = self.draw_card()
         player.hand.append(card)
-        self.print_cards([card])
         
     def player_turn(self,player):
         action = 'none'
-        draws = 0
         print(player.name + ' Total: ' + str(self.calc_hand(player.hand)))
-        while self.check_bust(player.hand) != True and action.upper() not in ['S','D']:
-            action = self.get_inst(player,draws)
+        while self.check_bust(player.hand) != True and action.upper() not in ['S','D'] and not (type(player) == Ghost and player.hand[0] == 'A') and not (action.upper() == 'P' and player.hand[0] == 'A'):
+            action = self.get_inst(player)
             if action.upper() == 'H':
                 self.get_card(player)
-                draws += 1
+                print(player.name + ' Hand: ')
+                self.print_cards(player.hand)
             elif action.upper() == 'D':
                 player.bank -= player.stake
                 player.stake = player.stake * 2
                 self.get_card(player)
-                draws += 1
+                print(player.name + ' Hand: ')
+                self.print_cards(player.hand)
+            elif action.upper() == 'P':
+                self.split(player)
             print(player.name + ' Total: ' + str(self.calc_hand(player.hand)))
         if self.check_bust(player.hand) == True:
             print('Bust!')
+            
+    def split(self,player):
+        ghost = Ghost(player)
+        place = self.players.index(player)
+        self.players.insert(place+1,ghost)
+        ghost.hand.append(player.hand[1])
+        player.hand.remove(player.hand[1])
+        player.hand.append(self.draw_card())
+        ghost.hand.append(self.draw_card())
+        print(player.name + ' Hand: ')
+        self.print_cards(player.hand)
+        print(ghost.name + ' Hand: ')
+        self.print_cards(ghost.hand)
+        
             
     def calc_hand(self,hand):
         score = [card.value for card in hand]
@@ -157,32 +235,37 @@ class Blackjack:
         if self.calc_hand(hand) > 21:
             return True
     
-    def get_inst(self,player,draws):
-        if draws == 0:
-            if player.hand[0].value == player.hand[1].value:
+    def get_inst(self,player):
+        if len(player.hand) == 2:
+            if (player.hand[0].value == player.hand[1].value) or (player.hand[0].value in [10,'J','Q','K'] and player.hand[1].value in [10,'J','Q','K']):
                 value = input('Hit(H), Stand(S), Double(D) or Split(P)?: ')
                 if value.upper() not in ['H','S','D','P']:
                     print('ERROR! You must enter H, S, D or P!')
-                    value = self.get_inst(player,draws)
+                    value = self.get_inst(player)
             else:
                 value = input('Hit(H), Stand(S) or Double(D)?: ')
                 if value.upper() not in ['H','S','D']:
                     print('ERROR! You must enter H, S or D!')
-                    value = self.get_inst(player,draws)
+                    value = self.get_inst(player)
         else:
             value = input('Hit(H) or Stand(S)?: ')
             if value.upper() not in  ['H','S']:
                 print('ERROR! You must enter H or S!')
-                value = self.get_inst(player,draws)
+                value = self.get_inst(player)
         return value
             
         
     def dealer_turn(self):
+        print('Dealer Hand:')
         self.print_cards(self.dealer.hand)
         print('Dealer Total: ' + str(self.calc_hand(self.dealer.hand)))
+        time.sleep(2)
         while self.calc_hand(self.dealer.hand) < self.dealer_stand:
             self.get_card(self.dealer)
+            print('Dealer Hand: ')
+            self.print_cards(self.dealer.hand)
             print('Dealer Total: ' + str(self.calc_hand(self.dealer.hand)))
+            time.sleep(2)
         if self.check_bust(self.dealer.hand) == True:
             print('Dealer Bust!')
         
@@ -206,20 +289,21 @@ class Blackjack:
                 return 'Push'
             else: return False
             
-    def get_stake(self):
-        stake = input('How much would you like to bet? ')
+    def get_stake(self,player):
+        stake = input(player.name + ' How much would you like to bet? ')
         return int(stake)
         
-    def play(self):
+    def game(self):
         self.new_game()
         if self.betting == True:
             for player in self.players:
-                player.stake = self.get_stake()
+                player.stake = self.get_stake(player)
                 player.bank += -player.stake
         self.deal()
+        active = []
         for player in self.players:
             if self.check_winner(player,on_deal=True) == False:
-                print('Dealer Hand')
+                print('Dealer Hand: ')
                 self.print_cards(self.dealer.hand)
                 print(player.name + ' Loses')
             elif self.check_winner(player,on_deal=True) == 'Blackjack':
@@ -231,29 +315,35 @@ class Blackjack:
             else:
                 self.player_turn(player)
                 if self.check_winner(player,on_player=True) == False:
-                    print('Dealer Hand')
-                    self.print_cards(self.dealer.hand)
                     print(player.name + ' Loses')
-        self.dealer_turn()
-        for player in self.players:
-            winner = self.check_winner(player,on_dealer=True)
-            if winner == False:
-                print(player.name + ' Loses')
-            elif winner == True:
-                print(player.name + ' wins')
-                if self.betting == True:
-                    player.bank += player.stake*2 
-            else: 
-                print('Push')
-                if self.betting == True:
-                    player.bank += player.stake
-            if self.betting == True:
-                print(player.name, player.bank)
+                else: active.append(player)
+        if len(active) > 0:
+            self.dealer_turn()
+            for player in active:
+                winner = self.check_winner(player,on_dealer=True)
+                if winner == False:
+                    print(player.name + ' Loses')
+                elif winner == True:
+                    print(player.name + ' wins')
+                    if self.betting == True:
+                        player.bank += player.stake*2
+                else: 
+                    print('Push')
+                    if self.betting == True:
+                        player.bank += player.stake
+        if self.betting == True:
+            for player in self.players:
+                if type(player) == Ghost:
+                    player.orig.bank += player.bank
+                    self.players.remove(player)
+            for player in self.players:
+                print(player.name, player.bank)        
 
-b = Blackjack(betting=True)
-"""b.add_player('Rob',5000)
-play_on = True
-while play_on == True:
-    b.play()
-    play_on = input('Would you like to play another hand? (Y/N): ')
-    play_on = (True if play_on.upper() == 'Y' else False)"""
+    def play(self):
+        if len(self.players) == 0:
+            self.add_player()
+        play_on = True
+        while play_on == True:
+            self.game()
+            play_on = input('Would you like to play another hand? (Y/N): ')
+            play_on = (True if play_on.upper() == 'Y' else False)
